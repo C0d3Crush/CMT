@@ -1,13 +1,13 @@
 import torch
 import numpy as np
 
-def _load(checkpoint_path):
-    checkpoint = torch.load(checkpoint_path)
+def _load(checkpoint_path, device):
+    checkpoint = torch.load(checkpoint_path, map_location=torch.device(device))
     return checkpoint
 
-def load_checkpoint(path, model, optimizer=None, reset_optimizer=True, is_dis=False):
+def load_checkpoint(path, model, device, optimizer=None, reset_optimizer=True, is_dis=False):
     print("Load checkpoint from: {}".format(path))
-    checkpoint = _load(path)
+    checkpoint = _load(path, device)
     if is_dis:
         s = checkpoint["disc"]
     else:
