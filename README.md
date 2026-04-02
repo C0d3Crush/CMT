@@ -19,8 +19,6 @@ Run Test:
     $ python demo.py --ckpt CMT.pth(put downloaded model path) --img_path ./samples/test_img --mask_path ./samples/test_mask --output_path ./samples/results
 ```
 
-![Python 3.7](https://img.shields.io/badge/python-3.7-green.svg)
-
 ### Device support (added in this fork)
 
 You can specify whether to run on CPU or GPU:
