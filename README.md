@@ -1,4 +1,3 @@
-```markdown
 ![Python 3.9](https://img.shields.io/badge/python-3.9-green.svg)
 # CMT — ARCADE Grayscale Inpainting Fork
 Based on Keunsoo Ko and Chang-Su Kim,
