@@ -149,6 +149,8 @@ def main():
     parser.add_argument('--device',     default='cpu', choices=['cpu', 'cuda'])
     parser.add_argument('--smoke_test', action='store_true',
                     help='Run with 2 train / 1 val image to verify pipeline')
+    parser.add_argument('--smoke_size', type=int, default=2,
+                    help='Number of images to use in smoke test')
 
     args = parser.parse_args()
 
@@ -161,8 +163,8 @@ def main():
 
      # Smoke test — remove these two lines for real training
     if args.smoke_test:
-        train_dataset.image_ids = train_dataset.image_ids[:2]
-        val_dataset.image_ids   = val_dataset.image_ids[:1]
+        train_dataset.image_ids = train_dataset.image_ids[:args.smoke_size]
+        val_dataset.image_ids   = val_dataset.image_ids[:max(1, args.smoke_size // 2)]
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size,
                               shuffle=True,  num_workers=args.num_workers,
