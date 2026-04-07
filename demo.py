@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+
 import argparse, os, cv2, glob
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
