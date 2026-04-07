@@ -53,14 +53,16 @@ for step, mask_fn in enumerate(prog_bar):
 
     # CHANGED: Graustufen statt RGB laden, weil ARCADE 1-Kanal-Bilder hat.
     gt_gray = cv2.imread(os.path.join(args.img_path, fn), cv2.IMREAD_GRAYSCALE)
-    assert gt_gray is not None, f"Could not read image: {os.path.join(args.img_path, fn)}"
+    assert gt_gray is not None, "Could not read image: {}".format(os.path.join(args.img_path, fn))
 
     # CHANGED: Auf [-1, 1] normalisieren, aber nur 1 Kanal.
     gt_ = (gt_gray.astype(np.float32) / 255.0) * 2.0 - 1.0
 
     # CHANGED: Maske als Graustufen laden.
     mask_gray = cv2.imread(mask_fn, cv2.IMREAD_GRAYSCALE)
-    assert mask_gray is not None, f"Could not read mask: {mask_fn}"
+    
+    assert mask_gray is not None, "Could not read mask: {}".format(mask_fn)
+    
     mask = mask_gray.astype(np.float32) / 255.0
 
     # CHANGED: Tensor-Shape von (B,3,H,W) auf (B,1,H,W) umgestellt.

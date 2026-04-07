@@ -7,8 +7,8 @@ from network.refine import Refine
 class Inpaint(nn.Module):
     def __init__(self, input_size=256, patch_size=16, depth=15, heads=16):
         super().__init__()
-        self.coarse = ViT(input_size, patch_size, (patch_size**2) * 1, depth, heads, 1024)
-        self.refine = Refine(3) 
+        self.coarse = ViT(input_size, patch_size, 768, depth, heads, 1024)
+        self.refine = Refine(7) 
 
     def forward(self, img, mask):
         c_gen, stack = self.coarse(img * (1 - mask), mask)
