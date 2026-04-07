@@ -41,7 +41,7 @@ class Refine(nn.Module):
                 UpSample((64, 64), 2 * dim, dim // 2, 4)),  # 256, 256
             nn.Sequential(
                 BasicLayer(dim=dim, input_resolution=(256, 256), num_heads=1, depth=2, stride=None, window_size=8),
-                Mlp(dim, out_features=3), nn.Tanh()),  # 96, 96
+                Mlp(dim, out_features=1), nn.Tanh()),  # 96, 96
         ])
 
     def forward(self, x):
