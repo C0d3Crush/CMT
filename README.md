@@ -7,19 +7,6 @@ This fork adapts CMT for **grayscale coronary angiography inpainting** using the
 
 ---
 
-### Installation
-```bash
-git clone https://github.com/keunsoo-ko/CMT.git
-cd CMT
-python -m venv venv
-source venv/bin/activate
-pip install torch torchvision tqdm einops timm
-pip install --only-binary=:all: opencv-python-headless
-pip install "numpy<2"
-```
-
----
-
 ### Training on ARCADE
 ```bash
 python train.py \
