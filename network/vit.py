@@ -42,12 +42,13 @@ def window_reverse(windows, window_size, resolution):
     sH, sW = kH // 2, kW // 2
     num = (H//kH) * (W//kW)
     B = windows.shape[0]
-    x = windows[:, :num].view(B, H//kH, W//kW, kH, kW, 3)
-    y = x.permute(0, 5, 1, 3, 2, 4).reshape(B, 3, H, W)
+
+    x = windows[:, :num].view(B, H//kH, W//kW, kH, kW, 1)
+    y = x.permute(0, 5, 1, 3, 2, 4).reshape(B, 1, H, W)
 
     y_ = y.clone()
-    x_ = windows[:, num:].view(B, H//kH-1, W//kW-1, kH, kW, 3)
-    y_[..., sH:-sH, sW:-sW] = x_.permute(0, 5, 1, 3, 2, 4).reshape(B, 3, H-kH, W-kW)
+    x_ = windows[:, num:].view(B, H//kH-1, W//kW-1, kH, kW, 1)
+    y_[..., sH:-sH, sW:-sW] = x_.permute(0, 5, 1, 3, 2, 4).reshape(B, 1, H-kH, W-kW)
 
     return [y, y_]
 
@@ -205,7 +206,7 @@ class Transformer(nn.Module):
         return x, stack
 
 class ViT(nn.Module):
-    def __init__(self, image_size, patch_size, dim, depth, heads, mlp_dim, channels = 3, dim_head = 64, dropout = 0.):
+    def __init__(self, image_size, patch_size, dim, depth, heads, mlp_dim, channels = 1, dim_head = 64, dropout = 0.):
         super().__init__()
         image_height, image_width = pair(image_size)
         patch_height, patch_width = pair(patch_size)
@@ -244,7 +245,7 @@ class ViT(nn.Module):
         x = self.to_patch(torch.cat((img, mask), 1))
         # mask updated
         with torch.no_grad():
-            m = self.mask_to_flat(mask.repeat(1, 4, 1, 1)) # b, n, 1
+            m = self.mask_to_flat(mask.repeat(1, 2, 1, 1)) # b, n, 1
             m = torch.cat((torch.ones_like(m[:, :1]), m), dim=1)
             m = m @ torch.abs(self.to_patch[1].weight.transpose(1, 0))
 
