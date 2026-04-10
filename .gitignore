@@ -22,3 +22,6 @@ samples/**/.DS_Store
 
 # Sonstiges
 *.zip
+
+samples/
+prepare_masks.py
