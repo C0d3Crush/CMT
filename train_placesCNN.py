@@ -60,7 +60,7 @@ parser.add_argument('--num_classes', default=365, type=int,
 parser.add_argument('--dataset', default='arcade',
                     help='dataset name (default: arcade)')
 
-best_prec1 = -1
+best_prec1 = 0
 
 
 def main():
@@ -151,13 +151,13 @@ def main():
     )
 
     if args.evaluate:
-        prec1 = validate(val_loader, model, criterion, device)
+        validate(val_loader, model, criterion)
         return
 
     for epoch in range(args.start_epoch, args.epochs):
         adjust_learning_rate(optimizer, epoch)
         train(train_loader, model, criterion, optimizer, epoch, device)
-        prec1 = validate(val_loader, model, criterion, device)
+        validate(val_loader, model, criterion, device)
 
         is_best = prec1 > best_prec1
         best_prec1 = max(prec1, best_prec1)
