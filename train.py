@@ -11,6 +11,7 @@ from collections import defaultdict
 from tqdm import tqdm
 from network.network_pro import Inpaint
 from utils import load_checkpoint, psnr
+from skimage.metrics import structural_similarity as ssim_fn
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -163,7 +164,7 @@ def main():
     best_val_psnr = 0.0
     log_path = os.path.join(args.output_dir, 'training_log.csv')
     with open(log_path, 'w') as f:
-        f.write('epoch,train_loss,val_psnr\n')
+        f.write('epoch,train_loss,val_psnr,val_ssim\n')
 
     for epoch in range(1, args.epochs + 1):
         # -- Train --
@@ -184,6 +185,7 @@ def main():
         # -- Validate --
         model.eval()
         val_psnr = 0.0
+        val_ssim = 0.0
         with torch.no_grad():
             for img, mask in tqdm(val_loader, desc=f"Epoch {epoch}/{args.epochs} [val]"):
                 img, mask = img.to(device), mask.to(device)
@@ -193,13 +195,15 @@ def main():
                 gt_np  = (img[:, 0].cpu().numpy()    * 0.5 + 0.5) * 255.0
                 for o, g in zip(out_np, gt_np):
                     val_psnr += psnr(o, g)
+                    val_ssim += ssim_fn(o, g, data_range=255.0)
         val_psnr /= len(val_dataset)
+        val_ssim /= len(val_dataset)
 
         scheduler.step()
-        print(f"Epoch {epoch:03d} | train_loss={train_loss:.4f} | val_psnr={val_psnr:.2f} dB")
+        print(f"Epoch {epoch:03d} | train_loss={train_loss:.4f} | val_psnr={val_psnr:.2f} dB | val_ssim={val_ssim:.4f}")
 
         with open(log_path, 'a') as f:
-            f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f}\n")
+            f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f},{val_ssim:.4f}\n")
 
         if val_psnr > best_val_psnr:
             best_val_psnr = val_psnr
