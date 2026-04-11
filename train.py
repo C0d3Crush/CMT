@@ -205,14 +205,11 @@ def main():
 
     # ---- Optimiser & Loss ----
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
+    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
     criterion = InpaintingLoss().to(device)
 
     # ---- Training loop ----
     best_val_psnr = 0.0
-    log_path = os.path.join(args.output_dir, "training_log.csv")
-    with open(log_path, "w") as f:
-        f.write("epoch,train_loss,val_psnr\n")
 
     for epoch in range(1, args.epochs + 1):
         # -- Train --
@@ -246,8 +243,6 @@ def main():
 
         scheduler.step()
         print(f"Epoch {epoch:03d} | train_loss={train_loss:.4f} | val_psnr={val_psnr:.2f} dB")
-        with open(log_path, "a") as f:
-            f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f}\n")
 
         if val_psnr > best_val_psnr:
             best_val_psnr = val_psnr
