@@ -30,12 +30,10 @@ class ArcadeDataset(Dataset):
         with open(ann_path) as f:
             coco = json.load(f)
         self.id_to_info = {img['id']: img for img in coco['images']}
-        # Group vessel annotations (exclude stenosis) by image_id
         self.anns_by_image = defaultdict(list)
         for ann in coco['annotations']:
             if ann['category_id'] != self.STENOSIS_CATEGORY_ID:
                 self.anns_by_image[ann['image_id']].append(ann)
-        # Only keep images that have at least one vessel annotation
         self.image_ids = [
             img_id for img_id in self.id_to_info
             if self.anns_by_image[img_id]
@@ -59,22 +57,17 @@ class ArcadeDataset(Dataset):
         image_id = self.image_ids[idx]
         info     = self.id_to_info[image_id]
         W, H     = info['width'], info['height']
-        # Load image as grayscale
         img_path = os.path.join(self.img_dir, info['file_name'])
         img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         if img is None:
             raise FileNotFoundError(f"Image not found: {img_path}")
-        # Build vessel mask
         mask_pil = self._make_mask(image_id, W, H)
         mask_np  = np.array(mask_pil, dtype=np.float32) / 255.0
-        # Resize both to model input size
         img  = cv2.resize(img,     (self.image_size, self.image_size),
                           interpolation=cv2.INTER_LINEAR)
         mask = cv2.resize(mask_np, (self.image_size, self.image_size),
                           interpolation=cv2.INTER_NEAREST)
-        # Normalise image to [-1, 1]
         img_norm = (img.astype(np.float32) / 255.0) * 2.0 - 1.0
-        # Tensors: (1, H, W)
         img_t  = torch.from_numpy(img_norm).unsqueeze(0)
         mask_t = torch.from_numpy(mask.astype(np.float32)).unsqueeze(0)
         return img_t, mask_t
@@ -108,40 +101,6 @@ def save_checkpoint(model, optimizer, epoch, loss, path):
     print(f"  Checkpoint saved: {path}")
 
 
-def load_pretrained_backbone(model, pretrain_path, device):
-    """
-    Load encoder weights from a Places365-style checkpoint (place2.pth or
-    our ARCADE-pretrained resnet50_best.pth.tar) into the CMT backbone.
-
-    Only matching keys are loaded; mismatches (fc, conv1 shape differences
-    from different num_classes) are silently skipped.
-    """
-    if not os.path.exists(pretrain_path):
-        print(f"  [WARN] Pretrain checkpoint not found: {pretrain_path} — skipping")
-        return model
-
-    ckpt = torch.load(pretrain_path, map_location=device)
-
-    # Places365 checkpoints store weights under 'state_dict'
-    state = ckpt.get('state_dict', ckpt)
-
-    # Strip 'module.' prefix added by DataParallel in train_placesCNN.py
-    state = {k.replace('module.', ''): v for k, v in state.items()}
-
-    model_state = model.state_dict()
-    matched, skipped = 0, 0
-    for k, v in state.items():
-        if k in model_state and model_state[k].shape == v.shape:
-            model_state[k] = v
-            matched += 1
-        else:
-            skipped += 1
-
-    model.load_state_dict(model_state)
-    print(f"  Pretrained backbone loaded: {matched} layers matched, {skipped} skipped")
-    return model
-
-
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
@@ -154,11 +113,6 @@ def main():
     parser.add_argument('--output_dir',  default='checkpoints')
     parser.add_argument('--ckpt',        default=None,
                         help='Resume from a CMT training checkpoint')
-    parser.add_argument('--pretrain',    default='place2.pth',
-                        help='Path to Places365-style backbone checkpoint '
-                             '(default: place2.pth — our ARCADE-pretrained resnet50)')
-    parser.add_argument('--no_pretrain', action='store_true',
-                        help='Skip backbone pretraining entirely')
     parser.add_argument('--epochs',      type=int,   default=100)
     parser.add_argument('--batch_size',  type=int,   default=4)
     parser.add_argument('--lr',          type=float, default=1e-4)
@@ -196,20 +150,20 @@ def main():
     # ---- Model ----
     model = Inpaint(input_size=args.input_size).to(device)
 
-    # 1. Load ARCADE-pretrained backbone (place2.pth) — unless resuming or disabled
     if args.ckpt and os.path.exists(args.ckpt):
         model = load_checkpoint(args.ckpt, model, device)
-        print(f"  Resumed from CMT checkpoint: {args.ckpt}")
-    elif not args.no_pretrain:
-        model = load_pretrained_backbone(model, args.pretrain, device)
+        print(f"  Resumed from checkpoint: {args.ckpt}")
 
     # ---- Optimiser & Loss ----
     optimizer = optim.Adam(model.parameters(), lr=args.lr, betas=(0.9, 0.999))
-    scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=30, gamma=0.5)
+    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=args.epochs)
     criterion = InpaintingLoss().to(device)
 
     # ---- Training loop ----
     best_val_psnr = 0.0
+    log_path = os.path.join(args.output_dir, 'training_log.csv')
+    with open(log_path, 'w') as f:
+        f.write('epoch,train_loss,val_psnr\n')
 
     for epoch in range(1, args.epochs + 1):
         # -- Train --
@@ -243,6 +197,9 @@ def main():
 
         scheduler.step()
         print(f"Epoch {epoch:03d} | train_loss={train_loss:.4f} | val_psnr={val_psnr:.2f} dB")
+
+        with open(log_path, 'a') as f:
+            f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f}\n")
 
         if val_psnr > best_val_psnr:
             best_val_psnr = val_psnr
