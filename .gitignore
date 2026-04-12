@@ -25,3 +25,4 @@ samples/**/.DS_Store
 
 samples/
 prepare_masks.py
+arcade/
