@@ -20,14 +20,20 @@ warnings.filterwarnings('ignore')
 # ---------------------------------------------------------------------------
 class ArcadeDataset(Dataset):
     """
-    Loads grayscale coronary angiography images and generates vessel masks
-    from COCO-format polygon annotations (all categories except stenosis).
+    Loads grayscale coronary angiography images with vessel masks.
+
+    Two modes:
+    - mask_dir=None  : masks generated from COCO annotations (vessel polygons)
+    - mask_dir=path  : masks loaded from folder (e.g. random_masks/)
+                       → enables background inpainting training
     """
     STENOSIS_CATEGORY_ID = 26
 
-    def __init__(self, img_dir, ann_path, image_size=256):
+    def __init__(self, img_dir, ann_path, image_size=256, mask_dir=None):
         self.img_dir    = img_dir
         self.image_size = image_size
+        self.mask_dir   = mask_dir
+
         with open(ann_path) as f:
             coco = json.load(f)
         self.id_to_info = {img['id']: img for img in coco['images']}
@@ -43,7 +49,7 @@ class ArcadeDataset(Dataset):
     def __len__(self):
         return len(self.image_ids)
 
-    def _make_mask(self, image_id, W, H):
+    def _make_mask_from_annotations(self, image_id, W, H):
         """Rasterise vessel polygons into a binary mask (255 = vessel)."""
         mask = Image.new('L', (W, H), 0)
         draw = ImageDraw.Draw(mask)
@@ -58,19 +64,34 @@ class ArcadeDataset(Dataset):
         image_id = self.image_ids[idx]
         info     = self.id_to_info[image_id]
         W, H     = info['width'], info['height']
+
+        # Load image
         img_path = os.path.join(self.img_dir, info['file_name'])
         img = cv2.imread(img_path, cv2.IMREAD_GRAYSCALE)
         if img is None:
             raise FileNotFoundError(f"Image not found: {img_path}")
-        mask_pil = self._make_mask(image_id, W, H)
-        mask_np  = np.array(mask_pil, dtype=np.float32) / 255.0
+
+        # Load or generate mask
+        if self.mask_dir is not None:
+            mask_path = os.path.join(self.mask_dir, info['file_name'])
+            mask_img  = cv2.imread(mask_path, cv2.IMREAD_GRAYSCALE)
+            if mask_img is None:
+                raise FileNotFoundError(f"Mask not found: {mask_path}")
+            mask_np = mask_img.astype(np.float32) / 255.0
+        else:
+            mask_pil = self._make_mask_from_annotations(image_id, W, H)
+            mask_np  = np.array(mask_pil, dtype=np.float32) / 255.0
+
+        # Resize
         img  = cv2.resize(img,     (self.image_size, self.image_size),
                           interpolation=cv2.INTER_LINEAR)
         mask = cv2.resize(mask_np, (self.image_size, self.image_size),
                           interpolation=cv2.INTER_NEAREST)
+
+        # Normalise image to [-1, 1]
         img_norm = (img.astype(np.float32) / 255.0) * 2.0 - 1.0
-        img_t  = torch.from_numpy(img_norm).unsqueeze(0)
-        mask_t = torch.from_numpy(mask.astype(np.float32)).unsqueeze(0)
+        img_t    = torch.from_numpy(img_norm).unsqueeze(0)
+        mask_t   = torch.from_numpy(mask.astype(np.float32)).unsqueeze(0)
         return img_t, mask_t
 
 
@@ -142,8 +163,13 @@ def main():
     parser = argparse.ArgumentParser(description="Train CMT on ARCADE grayscale X-rays")
     parser.add_argument('--train_img',   default='arcade/syntax/train/images')
     parser.add_argument('--train_ann',   default='arcade/syntax/train/annotations/train.json')
+    parser.add_argument('--train_mask',  default=None,
+                        help='Optional: folder with precomputed train masks (e.g. random_masks/). '
+                             'If None, masks are generated from COCO annotations.')
     parser.add_argument('--val_img',     default='arcade/syntax/val/images')
     parser.add_argument('--val_ann',     default='arcade/syntax/val/annotations/val.json')
+    parser.add_argument('--val_mask',    default=None,
+                        help='Optional: folder with precomputed val masks.')
     parser.add_argument('--output_dir',  default='checkpoints')
     parser.add_argument('--ckpt',        default=None,
                         help='Resume from a CMT training checkpoint')
@@ -166,8 +192,15 @@ def main():
     device = torch.device(args.device)
 
     # ---- Datasets ----
-    train_dataset = ArcadeDataset(args.train_img, args.train_ann, args.input_size)
-    val_dataset   = ArcadeDataset(args.val_img,   args.val_ann,   args.input_size)
+    train_dataset = ArcadeDataset(args.train_img, args.train_ann, args.input_size,
+                                  mask_dir=args.train_mask)
+    val_dataset   = ArcadeDataset(args.val_img,   args.val_ann,   args.input_size,
+                                  mask_dir=args.val_mask)
+
+    if args.train_mask:
+        print(f"  Using precomputed train masks from: {args.train_mask}")
+    else:
+        print(f"  Generating train masks from COCO annotations")
 
     if args.smoke_test:
         train_dataset.image_ids = train_dataset.image_ids[:args.smoke_size]
