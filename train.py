@@ -229,8 +229,8 @@ def main():
     # ---- Training loop ----
     best_val_psnr = 0.0
     log_path = os.path.join(args.output_dir, 'training_log.csv')
-    drive_log_path = '/content/drive/MyDrive/training_log.csv' \
-        if os.path.isdir('/content/drive/MyDrive') else None
+    drive_log_path = '/content/drive/MyDrive/CMT/checkpoints/training_log.csv' \
+        if os.path.isdir('/content/drive/MyDrive/CMT/checkpoints') else None
     with open(log_path, 'w') as f:
         f.write('epoch,train_loss,val_psnr,val_ssim\n')
     if drive_log_path:
