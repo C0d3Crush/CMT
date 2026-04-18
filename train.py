@@ -229,8 +229,15 @@ def main():
     # ---- Training loop ----
     best_val_psnr = 0.0
     log_path = os.path.join(args.output_dir, 'training_log.csv')
-    drive_log_path = '/content/drive/MyDrive/CMT/checkpoints/training_log.csv' \
-        if os.path.isdir('/content/drive/MyDrive/CMT/checkpoints') else None
+
+    # Drive paths for Colab
+    drive_ckpt_dir = '/content/drive/MyDrive/CMT/checkpoints'
+    use_drive = os.path.isdir(drive_ckpt_dir)
+    if use_drive:
+        os.makedirs(drive_ckpt_dir, exist_ok=True)
+        print(f"  Drive mounted: checkpoints will be mirrored to {drive_ckpt_dir}")
+
+    drive_log_path = os.path.join(drive_ckpt_dir, 'training_log.csv') if use_drive else None
     with open(log_path, 'w') as f:
         f.write('epoch,train_loss,val_psnr,val_ssim\n')
     if drive_log_path:
@@ -281,12 +288,18 @@ def main():
 
         if val_psnr > best_val_psnr:
             best_val_psnr = val_psnr
-            save_checkpoint(model, optimizer, epoch, train_loss,
-                            os.path.join(args.output_dir, 'best.pth'))
+            best_path = os.path.join(args.output_dir, 'best.pth')
+            save_checkpoint(model, optimizer, epoch, train_loss, best_path)
+            if use_drive:
+                drive_best = os.path.join(drive_ckpt_dir, 'best.pth')
+                save_checkpoint(model, optimizer, epoch, train_loss, drive_best)
 
         if epoch % args.save_every == 0:
-            save_checkpoint(model, optimizer, epoch, train_loss,
-                            os.path.join(args.output_dir, f'epoch_{epoch:03d}.pth'))
+            epoch_path = os.path.join(args.output_dir, f'epoch_{epoch:03d}.pth')
+            save_checkpoint(model, optimizer, epoch, train_loss, epoch_path)
+            if use_drive:
+                drive_epoch = os.path.join(drive_ckpt_dir, f'epoch_{epoch:03d}.pth')
+                save_checkpoint(model, optimizer, epoch, train_loss, drive_epoch)
 
     print(f"\nTraining complete. Best val PSNR: {best_val_psnr:.2f} dB")
     print(f"Checkpoints in: {args.output_dir}/")
