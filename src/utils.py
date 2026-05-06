@@ -1,5 +1,10 @@
 import torch
 import numpy as np
+try:
+    from scipy.stats import wasserstein_distance
+    SCIPY_AVAILABLE = True
+except ImportError:
+    SCIPY_AVAILABLE = False
 
 def _load(checkpoint_path, device):
     checkpoint = torch.load(checkpoint_path, map_location=torch.device(device))
@@ -29,4 +34,26 @@ def psnr(img1, img2):
         return 100
     PIXEL_MAX = 255.0
     return 20 * np.log10(PIXEL_MAX / np.sqrt(mse))
+
+def rmse(img1, img2):
+    """Root Mean Square Error between two images."""
+    return np.sqrt(np.mean((img1 - img2) ** 2))
+
+def wasserstein_distance_2d(img1, img2):
+    """
+    Approximate 2D Wasserstein distance for grayscale images.
+    Uses 1D Wasserstein on flattened pixel distributions for efficiency.
+    
+    Args:
+        img1, img2: numpy arrays of shape (H, W) with pixel values [0, 255]
+    
+    Returns:
+        float: Wasserstein distance (lower is better)
+    """
+    if not SCIPY_AVAILABLE:
+        # Fallback to simpler Earth Mover's Distance approximation
+        return np.mean(np.abs(np.sort(img1.flatten()) - np.sort(img2.flatten())))
+    
+    # Use scipy's 1D Wasserstein on flattened distributions
+    return wasserstein_distance(img1.flatten(), img2.flatten())
 

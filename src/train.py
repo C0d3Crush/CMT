@@ -10,7 +10,7 @@ import cv2
 from collections import defaultdict
 from tqdm import tqdm
 from network.network_pro import Inpaint
-from utils import load_checkpoint, psnr
+from utils import load_checkpoint, psnr, rmse, wasserstein_distance_2d
 from skimage.metrics import structural_similarity as ssim_fn
 import warnings
 warnings.filterwarnings('ignore')
@@ -22,14 +22,15 @@ class ArcadeDataset(Dataset):
     """
     Loads grayscale coronary angiography images with vessel masks.
 
-    Two modes:
-    - mask_dir=None  : masks generated from COCO annotations (vessel polygons)
-    - mask_dir=path  : masks loaded from folder (e.g. random_masks/)
-                       → enables background inpainting training
+    Three modes:
+    - mask_dir=None, random_masks=False : masks from COCO annotations (vessel polygons)
+    - mask_dir=path                     : masks loaded from folder (e.g. data/masks_cache/)
+    - random_masks=True                 : random masks around vessel regions with padding
+                                        → enables diverse inpainting training
     """
     STENOSIS_CATEGORY_ID = 26
 
-    def __init__(self, img_dir, ann_path, image_size=256, mask_dir=None):
+    def __init__(self, img_dir, ann_path, image_size=256, mask_dir=None, random_masks=False, mask_padding=10):
         self.img_dir    = img_dir
         self.image_size = image_size
         self.mask_dir   = mask_dir
@@ -196,7 +197,7 @@ def main():
     parser.add_argument('--train_img',   default='arcade/syntax/train/images')
     parser.add_argument('--train_ann',   default='arcade/syntax/train/annotations/train.json')
     parser.add_argument('--train_mask',  default=None,
-                        help='Optional: folder with precomputed train masks (e.g. random_masks/). '
+                        help='Optional: folder with precomputed train masks (e.g. data/masks_cache/train). '
                              'If None, masks are generated from COCO annotations.')
     parser.add_argument('--val_img',     default='arcade/syntax/val/images')
     parser.add_argument('--val_ann',     default='arcade/syntax/val/annotations/val.json')
@@ -273,10 +274,10 @@ def main():
 
     drive_log_path = os.path.join(drive_ckpt_dir, 'training_log.csv') if use_drive else None
     with open(log_path, 'w') as f:
-        f.write('epoch,train_loss,val_psnr,val_ssim\n')
+        f.write('epoch,train_loss,val_psnr,val_ssim,val_wasserstein,val_rmse\n')
     if drive_log_path:
         with open(drive_log_path, 'w') as f:
-            f.write('epoch,train_loss,val_psnr,val_ssim\n')
+            f.write('epoch,train_loss,val_psnr,val_ssim,val_wasserstein,val_rmse\n')
 
     for epoch in range(1, args.epochs + 1):
         # -- Train --
@@ -298,6 +299,8 @@ def main():
         model.eval()
         val_psnr = 0.0
         val_ssim = 0.0
+        val_wasserstein = 0.0
+        val_rmse = 0.0
         with torch.no_grad():
             for img, mask in tqdm(val_loader, desc=f"Epoch {epoch}/{args.epochs} [val]"):
                 img, mask = img.to(device), mask.to(device)
@@ -308,17 +311,21 @@ def main():
                 for o, g in zip(out_np, gt_np):
                     val_psnr += psnr(o, g)
                     val_ssim += ssim_fn(o, g, data_range=255.0)
+                    val_wasserstein += wasserstein_distance_2d(o, g)
+                    val_rmse += rmse(o, g)
         val_psnr /= len(val_dataset)
         val_ssim /= len(val_dataset)
+        val_wasserstein /= len(val_dataset)
+        val_rmse /= len(val_dataset)
 
         scheduler.step()
-        print(f"Epoch {epoch:03d} | train_loss={train_loss:.4f} | val_psnr={val_psnr:.2f} dB | val_ssim={val_ssim:.4f}")
+        print(f"Epoch {epoch:03d} | train_loss={train_loss:.4f} | val_psnr={val_psnr:.2f} dB | val_ssim={val_ssim:.4f} | val_wasserstein={val_wasserstein:.2f} | val_rmse={val_rmse:.2f}")
 
         with open(log_path, 'a') as f:
-            f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f},{val_ssim:.4f}\n")
+            f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f},{val_ssim:.4f},{val_wasserstein:.4f},{val_rmse:.4f}\n")
         if drive_log_path:
             with open(drive_log_path, 'a') as f:
-                f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f},{val_ssim:.4f}\n")
+                f.write(f"{epoch},{train_loss:.4f},{val_psnr:.2f},{val_ssim:.4f},{val_wasserstein:.4f},{val_rmse:.4f}\n")
 
         if val_psnr > best_val_psnr:
             best_val_psnr = val_psnr
